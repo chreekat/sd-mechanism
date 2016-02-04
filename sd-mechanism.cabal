@@ -43,3 +43,4 @@ test-suite test
                     , tasty-hunit
                     , sd-mechanism
                     , persistent >= 2.2.4
+                    , transformers >= 0.4.2.0

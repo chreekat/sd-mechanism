@@ -1,3 +1,4 @@
+import Control.Monad.IO.Class (MonadIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Database.Persist
@@ -11,6 +12,7 @@ import Harness
 main :: IO ()
 main = defaultMain tests
 
+runDB :: (MonadIO m, MonadIO n) => m a -> n a
 runDB = undefined
 
 pending :: Assertion
@@ -24,15 +26,16 @@ tests = testGroup "input processor"
     , testCase "patron must support 3 months of pledging" threeMonths
     ]
 
-threeMonths = do
-    res <- runDB $ do
-        otherPatrons <- mapM insert (replicate 5 (MechPatron 1000))
-        patron <- insert (MechPatron 0)
-        project <- insert (MechProject 0)
-        mapM_ (insert . Pledge project) otherPatrons
+threeMonths  = undefined
+-- threeMonths = do
+--     res <- runDB $ do
+--         otherPatrons <- mapM insert (replicate 5 (MechPatron 1000))
+--         patron <- insert (MechPatron 0)
+--         project <- insert (MechProject 0)
+--         mapM_ (insert . Pledge project) otherPatrons
 
-        newPledge project patron
-    res @=? InsufficientFunds
+--         newPledge project patron
+--     res @=? Left InsufficientFunds
 
 -- Now, a fun part: setting up a test. This will require doing the
 -- runMigrations thing, and creating a pool of connections (minsize: 1),

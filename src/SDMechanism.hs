@@ -14,36 +14,32 @@ import Types
 import Persist
 
 type Mech m a = MonadIO m => ReaderT SqlBackend m a
+type EMech a = MonadIO m => ExceptT MechError (ReaderT SqlBackend m) a
 
-importPatron a = (hoistEither . fmapL BadKey . keyFromValues) [PersistInt64 (mechPatron a)]
-importProject r = (hoistEither . fmapL BadKey . keyFromValues) [PersistInt64 (mechProject r)]
+-- | Convert user's value to a MechPatron
+importPatron :: ToMechPatron a => a -> EMech (Entity MechPatron)
+importPatron = (!? NoSuchPatron) . getBy . ExternalPatron . mechPatron
+
+-- | Convert user's value to a MechProjectId
+importProject :: ToMechProject a => a -> EMech (Entity MechProject)
+importProject = (!? NoSuchProject) . getBy . ExternalProject . mechProject
 
 right :: Monad m => m a -> ExceptT e m a
 right = ExceptT . fmap Right
 
-bail = \case
-    IMechError e' -> (error . ("Mechanism: " ++) . ibail') e'
-    e' -> return e'
-
 newPledge :: (ToMechPatron pat, ToMechProject pro)
-          => pro -> pat -> Mech m ()
-newPledge r a = exceptT bail return $ do
+          => pro -> pat -> Mech m (Either MechError ())
+newPledge r a = runExceptT $ do
     pro <- importProject r
     pat <- importPatron a
-    existingPledge <- getBy (UniquePledge pro pat) !? ExistingPledge
-    funds <- right (availableFunds pro)
-    ct <- right (count [PledgePatron ==. pat])
-    let outlay = payout (ct + 1)
-    case compare funds (3 * outlay) of
-        LT -> throwE InsufficientFunds
-        _  -> right (insert_ (Pledge pro pat))
+    hoistEither (Right ())
 
-deletePledge :: (ToMechPatron pat, ToMechProject pro)
-             => pro-> pat -> Mech m ()
-deletePledge r a = exceptT return return $ do
-    pro <- importProject r
-    pat <- importPatron a
-    right (deleteBy (UniquePledge pro pat))
+-- deletePledge :: (ToMechPatron pat, ToMechProject pro)
+--              => pro-> pat -> Mech m ()
+-- deletePledge r a = exceptT return return $ do
+--     let pro = importProject r
+--         pat = importPatron a
+--     right (deleteBy (UniquePledge pro pat))
 
 -- tellPledges :: (ToMechProject pro, ToMechPatron pat) => pro -> Mech m [pat]
 -- tellPledges a = fmap (map export) (selectList [PledgeProject ==. (ma a)] [])
