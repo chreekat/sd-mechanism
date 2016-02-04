@@ -1,5 +1,6 @@
 -- For type Mech m a
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE FlexibleContexts #-}
 module SDMechanism where
 
 import Control.Error
@@ -30,9 +31,23 @@ right = ExceptT . fmap Right
 newPledge :: (ToMechPatron pat, ToMechProject pro)
           => pro -> pat -> Mech m (Either MechError ())
 newPledge r a = runExceptT $ do
-    pro <- importProject r
-    pat <- importPatron a
-    hoistEither (Right ())
+    Entity proId pro <- importProject r
+    Entity patId pat <- importPatron a
+    _ <- nonExistent (UniquePledge proId patId) !? ExistingPledge
+    otherPatrons <- right $ count [PledgeProject ==. proId]
+    case compare (mechPatronWallet pat) otherPatrons of
+        LT -> throwE InsufficientFunds
+        _  -> right $ insert_ (Pledge proId patId)
+
+nonExistent :: ( PersistEntity val
+               , MonadIO m
+               , PersistUnique (PersistEntityBackend val))
+            => Unique val -> ReaderT (PersistEntityBackend val) m (Maybe ())
+nonExistent a = do
+    a' <- getBy a
+    return $ case a' of
+        Nothing -> Just ()
+        Just _ -> Nothing
 
 -- deletePledge :: (ToMechPatron pat, ToMechProject pro)
 --              => pro-> pat -> Mech m ()
@@ -45,8 +60,6 @@ newPledge r a = runExceptT $ do
 -- tellPledges a = fmap (map export) (selectList [PledgeProject ==. (ma a)] [])
 --   where export = toPatron . pledgePatron . entityVal
 --
-availableFunds = undefined
-payout = undefined
 
 
 
