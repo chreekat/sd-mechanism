@@ -2,7 +2,8 @@
 {-# LANGUAGE Rank2Types #-}
 module SDMechanism where
 
-import Control.Monad (void, forM)
+import Control.Error
+import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Maybe (fromMaybe)
@@ -14,36 +15,46 @@ import Persist
 
 type Mech m a = MonadIO m => ReaderT SqlBackend m a
 
-newPledge :: (ToMechProject pro, ToMechPatron pat)
-          => pat-> pro -> Mech m PledgeResult
-newPledge a r = do
-    existingPledge <- getBy (UniquePledge pat pro)
-    res <- forM existingPledge $ \_ -> do
-        funds <- availableFunds pat
-        ct <- patronCount pro
-        let outlay = payout (ct + 1)
-        case compare funds (3 * outlay) of
-            LT -> return InsufficientFunds
-            GT -> return NewPledge <* upsert (Pledge pat pro) []
-    return (fromMaybe ExistingPledge res)
-  where pat = mechPatron a
-        pro = mechProject r
+importPatron a = (hoistEither . fmapL BadKey . keyFromValues) [PersistInt64 (mechPatron a)]
+importProject r = (hoistEither . fmapL BadKey . keyFromValues) [PersistInt64 (mechProject r)]
 
+right :: Monad m => m a -> ExceptT e m a
+right = ExceptT . fmap Right
+
+bail = \case
+    IMechError e' -> (error . ("Mechanism: " ++) . ibail') e'
+    e' -> return e'
+
+newPledge :: (ToMechPatron pat, ToMechProject pro)
+          => pro -> pat -> Mech m ()
+newPledge r a = exceptT bail return $ do
+    pro <- importProject r
+    pat <- importPatron a
+    existingPledge <- getBy (UniquePledge pro pat) !? ExistingPledge
+    funds <- right (availableFunds pro)
+    ct <- right (count [PledgePatron ==. pat])
+    let outlay = payout (ct + 1)
+    case compare funds (3 * outlay) of
+        LT -> throwE InsufficientFunds
+        _  -> right (insert_ (Pledge pro pat))
+
+deletePledge :: (ToMechPatron pat, ToMechProject pro)
+             => pro-> pat -> Mech m ()
+deletePledge r a = exceptT return return $ do
+    pro <- importProject r
+    pat <- importPatron a
+    right (deleteBy (UniquePledge pro pat))
+
+-- tellPledges :: (ToMechProject pro, ToMechPatron pat) => pro -> Mech m [pat]
+-- tellPledges a = fmap (map export) (selectList [PledgeProject ==. (ma a)] [])
+--   where export = toPatron . pledgePatron . entityVal
+--
 availableFunds = undefined
-patronCount = undefined
 payout = undefined
 
-data PledgeResult = InsufficientFunds | NewPledge | ExistingPledge
 
--- deletePledge :: (ToMechProject pro, ToMechPatron pat)
---              => pat-> pro -> Mech m ()
--- deletePledge a r = void (deleteBy (UniquePledge (ma a) (mr r)))
-
--- tellPledges :: (ToMechPatron pat, ToMechProject pro) => pat -> Mech m [pro]
--- tellPledges a = fmap (map export) (selectList [PledgePatron ==. (ma a)] [])
---   where export = toProject . pledgeProject . entityVal
 
     -- PayoutAll -> 
-    -- PayoutOne pro
-    -- TellPayoutHistory Int pro
+    -- PayoutOne pat
+    -- TellPayoutHistory Int pat
 

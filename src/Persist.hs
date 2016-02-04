@@ -8,19 +8,13 @@ module Persist where
 
 import Database.Persist.TH
 
-mkPersist sqlSettings [persistLowerCase|
+share [mkPersist sqlSettings, mkMigrate "migrateMech"] [persistLowerCase|
 MechPatron
-    wallet WalletId
+    wallet Int
 MechProject
-    dropbox DropboxId
+    dropbox Int
 Pledge
-    patron MechPatronId
     project MechProjectId
-    UniquePledge patron project
-Wallet
-    owner MechPatronId
-    balance Int
-Dropbox
-    owner MechProjectId
-    balance Int
+    patron MechPatronId
+    UniquePledge project patron
 |]
