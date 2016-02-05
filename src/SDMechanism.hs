@@ -12,7 +12,14 @@ import Database.Persist.Sql (SqlBackend)
 import Types
 import Persist
 
+-- *** Some conveniences (internal)
+right :: Monad m => m a -> ExceptT e m a
+right = ExceptT . fmap Right
 
+type Mech a = forall m. MonadIO m => ReaderT SqlBackend m a
+type EMech a = forall m. MonadIO m => ExceptT MechError (ReaderT SqlBackend m) a
+
+-- *** More internal stuff
 -- | Convert user's value to a MechPatron
 importPatron :: ToMechPatron a => a -> EMech (Entity MechPatron)
 importPatron = (!? NoSuchPatron) . getBy . ExternalPatron . mechPatron
@@ -21,12 +28,7 @@ importPatron = (!? NoSuchPatron) . getBy . ExternalPatron . mechPatron
 importProject :: ToMechProject a => a -> EMech (Entity MechProject)
 importProject = (!? NoSuchProject) . getBy . ExternalProject . mechProject
 
--- *** Some conveniences (internal)
-right :: Monad m => m a -> ExceptT e m a
-right = ExceptT . fmap Right
-
-type Mech a = forall m. MonadIO m => ReaderT SqlBackend m a
-type EMech a = forall m. MonadIO m => ExceptT MechError (ReaderT SqlBackend m) a
+-- *** Ahh, some external things.
 
 -- | Register a new pledge. Currently throws an error if the pledge already
 -- exists; maybe better to ignore it quietly?
@@ -56,6 +58,8 @@ deletePledge r a = runExceptT $ do
     pat <- entityKey <$> importPatron a
     right (deleteBy (UniquePledge pro pat))
 
+-- | Get a list of patron pledges. Or, get an error, if the patron doesn't
+-- exist.
 patronPledges :: (ToMechProject pro, ToMechPatron pat)
               => pat -> Mech (Either MechError [pro])
 patronPledges a = runExceptT $ do
@@ -67,13 +71,3 @@ patronPledges a = runExceptT $ do
              (selectList [MechProjectId <-. pros] [])
   where
     extractProject = toExternalProject . mechProjectExternalKey . entityVal
-
---   where export = toPatron . pledgePatron . entityVal
---
-
-
-
-    -- PayoutAll -> 
-    -- PayoutOne pat
-    -- TellPayoutHistory Int pat
-
