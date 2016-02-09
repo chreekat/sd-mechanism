@@ -4,6 +4,7 @@
 module SDMechanism where
 
 import Control.Error
+import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT)
 import Database.Persist
@@ -16,7 +17,7 @@ import Persist
 right :: Monad m => m a -> ExceptT e m a
 right = ExceptT . fmap Right
 
-type Mech a = forall m. MonadIO m => ReaderT SqlBackend m a
+type Mech a = forall m. MonadIO m => ReaderT SqlBackend m (Either MechError a)
 type EMech a = forall m. MonadIO m => ExceptT MechError (ReaderT SqlBackend m) a
 
 -- *** More internal stuff
@@ -33,7 +34,7 @@ importProject = (!? NoSuchProject) . getBy . ExternalProject . mechProject
 -- | Register a new pledge. Currently throws an error if the pledge already
 -- exists; maybe better to ignore it quietly?
 newPledge :: (ToMechProject pro, ToMechPatron pat)
-          => pro -> pat -> Mech (Either MechError ())
+          => pro -> pat -> Mech ()
 newPledge r a = runExceptT $ do
     Entity proId _   <- importProject r
     Entity patId pat <- importPatron a
@@ -47,12 +48,17 @@ newPledge r a = runExceptT $ do
     assertNonExistentPledge pro pat = (!? ExistingPledge) $
         maybe (Just ()) (const Nothing) <$> getBy (UniquePledge pro pat)
 
+newPatron :: ToMechPatron a => a -> Int -> Mech ()
+newPatron a bal = runExceptT $ do
+    let k = mechPatron a
+    void $ insertUnique (MechPatron bal k) !? ExistingPatron
+
 -- | Delete a pledge. Currently ignores nonexistent pledges quietly,
 -- because that's the Persistent default for deleteBy, but complains about
 -- nonexistent patrons and projects. Maybe it should ignore their absence
 -- quietly?
 deletePledge :: (ToMechProject pro, ToMechPatron pat)
-             => pro -> pat -> Mech (Either MechError ())
+             => pro -> pat -> Mech ()
 deletePledge r a = runExceptT $ do
     pro <- entityKey <$> importProject r
     pat <- entityKey <$> importPatron a
@@ -61,13 +67,13 @@ deletePledge r a = runExceptT $ do
 -- | Get a list of patron pledges. Or, get an error, if the patron doesn't
 -- exist.
 patronPledges :: (ToMechProject pro, ToMechPatron pat)
-              => pat -> Mech (Either MechError [pro])
+              => pat -> Mech [pro]
 patronPledges a = runExceptT $ do
     pat <- entityKey <$> importPatron a
     right $ do
         pros <- fmap (map (pledgeProject . entityVal))
                      (selectList [PledgePatron ==. pat] [])
-        fmap (map extractProject)
+        fmap (map exportProject)
              (selectList [MechProjectId <-. pros] [])
   where
-    extractProject = toExternalProject . mechProjectExternalKey . entityVal
+    exportProject = toExternalProject . mechProjectExternalKey . entityVal

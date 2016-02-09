@@ -44,3 +44,4 @@ test-suite test
                     , sd-mechanism
                     , persistent >= 2.2.4
                     , transformers >= 0.4.2.0
+                    , mtl >= 2.2.1

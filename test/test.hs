@@ -2,6 +2,9 @@ import Control.Monad.IO.Class (MonadIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Database.Persist
+import Control.Monad.Reader (ReaderT)
+-- import Database.Persist
+import Database.Persist.Sql (SqlBackend)
 
 import SDMechanism
 import Persist
@@ -12,7 +15,7 @@ import Harness
 main :: IO ()
 main = defaultMain tests
 
-runDB :: (MonadIO m, MonadIO n) => m a -> n a
+runDB :: MonadIO m => ReaderT SqlBackend m a -> m a
 runDB = undefined
 
 pending :: Assertion
@@ -26,19 +29,23 @@ tests = testGroup "input processor"
     , testCase "patron must support 3 months of pledging" threeMonths
     ]
 
-threeMonths  = undefined
--- threeMonths = do
---     res <- runDB $ do
---         otherPatrons <- mapM insert (replicate 5 (MechPatron 1000))
---         patron <- insert (MechPatron 0)
---         project <- insert (MechProject 0)
---         mapM_ (insert . Pledge project) otherPatrons
+threeMonths :: Assertion
+threeMonths = do
+    res <- runDB $ do
+        insert_ (MechPatron 0 0)
+        insert_ (MechProject 0 0)
+        newPledge (HR 0) (HA 0)
+    res @?= Left InsufficientFunds
 
---         newPledge project patron
---     res @=? Left InsufficientFunds
+    res' <- runDB $ do
+        _ <- upsert (MechPatron 3 0) []
+        newPledge (HR 0) (HA 0)
+    res' @?= Right ()
 
 -- Now, a fun part: setting up a test. This will require doing the
 -- runMigrations thing, and creating a pool of connections (minsize: 1),
 -- and then initializing (dropping) the data. Ideally tests can run in
 -- parallel, which means separate data and a poolsize > 1. Can that be
 -- done?
+
+
