@@ -1,4 +1,3 @@
-import Control.Monad.IO.Class (MonadIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Database.Persist
@@ -18,10 +17,10 @@ main = defaultMain tests
 
 type DBAssertion = SqlPersistT (LoggingT IO) ()
 
-pending :: MonadIO m => m ()
+pending :: DBAssertion
 pending = liftIO $ assertFailure "(test is pending)"
 
-shouldBe :: (Eq a, Show a, MonadIO m) => a -> a -> m ()
+shouldBe :: (Eq a, Show a) => a -> a -> DBAssertion
 a `shouldBe` b = liftIO $ a @?= b
 
 tests :: TestTree
