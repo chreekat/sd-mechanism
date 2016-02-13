@@ -1,8 +1,5 @@
 module Harness where
 
-import Data.Int
-import Database.Persist
-
 import Types
 
 data HPatron = HA Int
