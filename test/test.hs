@@ -3,7 +3,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Data.Pool (Pool, destroyAllResources)
 import Database.Persist
-import Control.Monad.Logger (runStderrLoggingT, LoggingT(..))
+import Control.Monad.Logger (runNoLoggingT, NoLoggingT(..))
 import Control.Monad.IO.Class (liftIO)
 import Database.Persist.Postgresql (createPostgresqlPool)
 import Database.Persist.Sql (SqlBackend, SqlPersistT, runSqlPool)
@@ -17,7 +17,10 @@ import Harness
 main :: IO ()
 main = defaultMain tests
 
-type DBAssertion = SqlPersistT (LoggingT IO) ()
+-- | *Some* kind of MonadLogger is needed to satisfy the types of the
+-- library methods used to create a database pool. Since logging isn't
+-- actually used yet, I'm using NoLoggingT.
+type DBAssertion = SqlPersistT (NoLoggingT IO) ()
 
 pending :: DBAssertion
 pending = liftIO (assertFailure "(test is pending)")
@@ -53,7 +56,7 @@ type DBTestTree = IO (Pool SqlBackend) -> TestTree
 dbTestGroup :: TestName -> [DBTestTree] -> TestTree
 dbTestGroup label = withResource mkTempDBPool destroyAllResources . buildDbTree label
   where
-    mkTempDBPool = runStderrLoggingT (createPostgresqlPool str 1)
+    mkTempDBPool = runNoLoggingT (createPostgresqlPool str 10)
     str = "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
 
 -- | Given a group of db tests, build a callback usable by withResource.
@@ -65,4 +68,4 @@ buildDbTree label dbtree mpool = testGroup label (map ($ mpool) dbtree)
 dbTestCase :: TestName -> DBAssertion -> DBTestTree
 dbTestCase label stmt mpool = testCase label $ do
     pool <- mpool
-    runStderrLoggingT (runSqlPool stmt pool)
+    runNoLoggingT (runSqlPool stmt pool)
