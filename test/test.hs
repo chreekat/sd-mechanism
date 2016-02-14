@@ -1,10 +1,12 @@
+{-# LANGUAGE OverloadedStrings #-}
 import Test.Tasty
 import Test.Tasty.HUnit
 import Database.Persist
-import Control.Monad.Logger (runStderrLoggingT, LoggingT)
+import Control.Monad.Logger (runStderrLoggingT, LoggingT(..))
 import Control.Monad.IO.Class (liftIO)
--- import Database.Persist
+import Database.Persist.Postgresql (openSimpleConn)
 import Database.Persist.Sql (SqlBackend, close', SqlPersistT, runSqlConn)
+import Database.PostgreSQL.Simple (connectPostgreSQL)
 
 import SDMechanism
 import Persist
@@ -18,10 +20,10 @@ main = defaultMain tests
 type DBAssertion = SqlPersistT (LoggingT IO) ()
 
 pending :: DBAssertion
-pending = liftIO $ assertFailure "(test is pending)"
+pending = liftIO (assertFailure "(test is pending)")
 
 shouldBe :: (Eq a, Show a) => a -> a -> DBAssertion
-a `shouldBe` b = liftIO $ a @?= b
+a `shouldBe` b = liftIO (a @?= b)
 
 tests :: TestTree
 tests = dbTestGroup "input processor"
@@ -52,7 +54,11 @@ dbTestGroup :: TestName -> [DBTestTree] -> TestTree
 dbTestGroup label = withResource mkTempDatabase close' . buildDbTree label
 
 mkTempDatabase :: IO SqlBackend
-mkTempDatabase = undefined
+mkTempDatabase = do
+    conn <- connectPostgreSQL "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
+    runStderrLoggingT (logSimpleConn conn)
+  where
+    logSimpleConn c = LoggingT (\logfunc -> openSimpleConn logfunc c)
 
 -- | Given a group of db tests, build a callback usable by withResource.
 -- The sqlbackend will need to be threaded to each Assertion (== IO ())
@@ -63,4 +69,5 @@ buildDbTree label dbtree mdb = testGroup label (map ($ mdb) dbtree)
 dbTestCase :: TestName -> DBAssertion -> DBTestTree
 dbTestCase label stmt mdb = testCase label $ do
     db <- mdb
+    -- **** Here is where the LoggingT type is inferred!
     runStderrLoggingT (runSqlConn stmt db)
