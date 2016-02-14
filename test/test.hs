@@ -3,10 +3,13 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Data.Pool (Pool, destroyAllResources)
 import Database.Persist
+import Control.Exception (bracket)
+import Control.Monad (void)
 import Control.Monad.Logger (runNoLoggingT, NoLoggingT(..))
 import Control.Monad.IO.Class (liftIO)
 import Database.Persist.Postgresql (createPostgresqlPool)
 import Database.Persist.Sql (SqlBackend, SqlPersistT, runSqlPool)
+import Database.PostgreSQL.Simple (execute_, connectPostgreSQL, close)
 
 import SDMechanism
 import Persist
@@ -54,11 +57,20 @@ type DBTestTree = IO (Pool SqlBackend) -> TestTree
 -- | Creates a pool of temp databases conns and passes it to the given tree
 -- of db tests, returning a regular TestTree back to the tasty machinery.
 dbTestGroup :: TestName -> [DBTestTree] -> TestTree
-dbTestGroup label = withResource mkTempDBPool destroyAllResources . buildDbTree label
+dbTestGroup label = withResource mkTempDBPool cleanseDatabase . buildDbTree label
   where
-    mkTempDBPool = runNoLoggingT (createPostgresqlPool str 10)
-    str = "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
-
+    mkTempDBPool = runNoLoggingT $ do
+        pgExecute z "create database blablab"
+        createPostgresqlPool str 10
+    z = "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
+    str = "postgresql:///blablab?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
+    cleanseDatabase pool = do
+        destroyAllResources pool
+        pgExecute z "drop database blablab"
+        return ()
+    pgExecute constr q = void . liftIO $ bracket (connectPostgreSQL constr)
+                                                 close
+                                                 (\c -> execute_ c q)
 -- | Given a group of db tests, build a callback usable by withResource.
 -- The sqlbackend pool will need to be threaded to each Assertion (== IO
 -- ()) that defines a test.
