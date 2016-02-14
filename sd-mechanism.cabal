@@ -37,7 +37,7 @@ test-suite test
     hs-source-dirs:   test
     other-modules:    Harness
     main-is:          test.hs
-    ghc-options:      -Wall
+    ghc-options:      -Wall -threaded -with-rtsopts=-N
     build-depends:    base >= 4 && < 5
                     , tasty >= 0.10
                     , tasty-hunit
@@ -48,3 +48,4 @@ test-suite test
                     , monad-logger >= 0.3.17
                     , postgresql-simple >= 0.5.1.2
                     , persistent-postgresql >= 2.2.2
+                    , resource-pool >= 0.2.3.2

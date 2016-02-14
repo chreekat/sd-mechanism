@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.Tasty
 import Test.Tasty.HUnit
+import Data.Pool (Pool, destroyAllResources)
 import Database.Persist
 import Control.Monad.Logger (runStderrLoggingT, LoggingT(..))
 import Control.Monad.IO.Class (liftIO)
-import Database.Persist.Postgresql (openSimpleConn)
-import Database.Persist.Sql (SqlBackend, close', SqlPersistT, runSqlConn)
-import Database.PostgreSQL.Simple (connectPostgreSQL)
+import Database.Persist.Postgresql (createPostgresqlPool)
+import Database.Persist.Sql (SqlBackend, SqlPersistT, runSqlPool)
 
 import SDMechanism
 import Persist
@@ -46,28 +46,23 @@ threeMonths = do
         newPledge (HR 0) (HA 0)
     res' `shouldBe` Right ()
 
-type DBTestTree = IO SqlBackend -> TestTree
+type DBTestTree = IO (Pool SqlBackend) -> TestTree
 
--- | Creates a temp database and passes it to the given tree of db tests,
--- returning a regular TestTree back to the tasty machinery.
+-- | Creates a pool of temp databases conns and passes it to the given tree
+-- of db tests, returning a regular TestTree back to the tasty machinery.
 dbTestGroup :: TestName -> [DBTestTree] -> TestTree
-dbTestGroup label = withResource mkTempDatabase close' . buildDbTree label
-
-mkTempDatabase :: IO SqlBackend
-mkTempDatabase = do
-    conn <- connectPostgreSQL "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
-    runStderrLoggingT (logSimpleConn conn)
+dbTestGroup label = withResource mkTempDBPool destroyAllResources . buildDbTree label
   where
-    logSimpleConn c = LoggingT (\logfunc -> openSimpleConn logfunc c)
+    mkTempDBPool = runStderrLoggingT (createPostgresqlPool str 1)
+    str = "postgresql:///postgres?host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
 
 -- | Given a group of db tests, build a callback usable by withResource.
--- The sqlbackend will need to be threaded to each Assertion (== IO ())
--- that defines a test.
-buildDbTree :: TestName -> [DBTestTree] -> IO SqlBackend -> TestTree
-buildDbTree label dbtree mdb = testGroup label (map ($ mdb) dbtree)
+-- The sqlbackend pool will need to be threaded to each Assertion (== IO
+-- ()) that defines a test.
+buildDbTree :: TestName -> [DBTestTree] -> IO (Pool SqlBackend) -> TestTree
+buildDbTree label dbtree mpool = testGroup label (map ($ mpool) dbtree)
 
 dbTestCase :: TestName -> DBAssertion -> DBTestTree
-dbTestCase label stmt mdb = testCase label $ do
-    db <- mdb
-    -- **** Here is where the LoggingT type is inferred!
-    runStderrLoggingT (runSqlConn stmt db)
+dbTestCase label stmt mpool = testCase label $ do
+    pool <- mpool
+    runStderrLoggingT (runSqlPool stmt pool)
