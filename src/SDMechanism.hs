@@ -40,7 +40,7 @@ newPledge r a = runExceptT $ do
     Entity patId pat <- importPatron a
     assertNonExistentPledge proId patId
     otherPatrons <- right $ count [PledgeProject ==. proId]
-    case compare (mechPatronWallet pat) otherPatrons of
+    case compare (mechPatronWallet pat) (3 * (1 + otherPatrons)) of
         LT -> throwE InsufficientFunds
         _  -> right $ insert_ (Pledge proId patId)
   where
