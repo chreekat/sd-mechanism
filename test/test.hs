@@ -1,17 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.Tasty
-import Test.Tasty.HUnit
-import Data.Pool (Pool, destroyAllResources)
+import Test.Tasty.Persist
 import Database.Persist
-import Data.Monoid ((<>))
-import Control.Exception (bracket)
-import Control.Monad (void)
-import Control.Monad.Logger (runNoLoggingT, NoLoggingT(..))
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Database.Persist.Postgresql (createPostgresqlPool)
-import Database.Persist.Sql
-        (SqlBackend, SqlPersistT, runSqlPool, transactionUndo, runMigrationSilent)
-import Database.PostgreSQL.Simple (execute_, connectPostgreSQL, close)
 
 import SDMechanism
 import Persist
@@ -22,51 +12,8 @@ import Harness
 main :: IO ()
 main = defaultMain tests
 
--- | *Some* kind of MonadLogger is needed to satisfy the types of the
--- library methods used to create a database pool. Since logging isn't
--- actually used yet, I'm using NoLoggingT.
-type DBAssertion = SqlPersistT (NoLoggingT IO) ()
-type DBTestTree = IO (Pool SqlBackend) -> TestTree
-
-pending :: MonadIO m => m ()
-pending = liftIO (assertFailure "(test is pending)")
-
-shouldBe :: (Eq a, Show a, MonadIO m) => m a -> a -> m ()
-ma `shouldBe` b = ma >>= (liftIO . (@?= b))
-
-dbTestCase :: TestName -> DBAssertion -> DBTestTree
-dbTestCase label stmt mpool = testCase label $ do
-    pool <- mpool
-    runNoLoggingT (runSqlPool (stmt >> transactionUndo) pool)
-
--- | Given a group of db tests, build a callback usable by withResource.
--- The sqlbackend pool will need to be threaded to each Assertion (== IO
--- ()) that defines a test.
-dbTestGroup :: TestName -> [DBTestTree] -> DBTestTree
-dbTestGroup label dbtree mpool = testGroup label (map ($ mpool) dbtree)
-
-withDB :: DBTestTree -> TestTree
-withDB = withResource mkTempDBPool cleanseDatabase
-  where
-    mkTempDBPool = runNoLoggingT $ do
-        pgExecute z "create database blablab"
-        p <- createPostgresqlPool str 10
-        void $ runSqlPool (runMigrationSilent migrateMech) p
-        return p
-    z = "postgresql:///postgres?"
-        <> "host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
-    str = "postgresql:///blablab?"
-          <> "host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
-    cleanseDatabase pool = do
-        destroyAllResources pool
-        void $ pgExecute z "drop database blablab"
-    pgExecute constr q = void . liftIO $ bracket (connectPostgreSQL constr)
-                                                 close
-                                                 (\c -> execute_ c q)
-
----
 tests :: TestTree
-tests = withDB $ dbTestGroup "input processor"
+tests = withDB migrateMech $ dbTestGroup "input processor"
     [ dbTestCase "nobody is ever overspent" pending
     , dbTestCase "during payout, projects are independent" pending
     , dbTestGroup "patron must support 3 months of pledging" threeMonths
