@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tools for running standalone tests that use Persist.
+-- | Tools for running standalone tests that use Persist. The guiding
+-- principle is test independence. The key [tbd] mechanisms are creating
+-- temporary databases and rolling back all test-created changes between
+-- each test.
 module Test.Tasty.Persist
         ( -- * getting back to TestTree:s
           withDB
