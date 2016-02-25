@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Tools for running standalone tests that use Postgres via Persist. The
--- guiding principle is test independence. The key [tbd] mechanisms are
--- creating temporary databases and rolling back all test-created changes
--- between each test.
+-- guiding principle is test independence. The key mechanisms are creating
+-- temporary databases and rolling back all test-created changes between
+-- each test.
 module Test.Tasty.Persist.Postgres
         ( -- * getting back to TestTree:s
           withDB
@@ -21,6 +21,7 @@ import Control.Exception (bracket)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (runNoLoggingT, NoLoggingT(..))
+import Data.ByteString.Char8 (pack)
 import Data.Monoid ((<>))
 import Data.Pool (Pool, destroyAllResources)
 import Database.Persist.Postgresql (createPostgresqlPool, PostgresConf(..))
@@ -32,6 +33,7 @@ import Database.Persist.Sql
         , transactionUndo
         , runMigrationSilent)
 import Database.PostgreSQL.Simple (execute_, connectPostgreSQL, close)
+import System.Random
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -40,9 +42,14 @@ import Test.Tasty.HUnit
 -- actually used yet, I'm using NoLoggingT.
 type DBAssertion = SqlPersistT (NoLoggingT IO) ()
 
+data TmpDB = TmpDB
+        { tmpPool :: Pool SqlBackend
+        , tmpName :: String
+        }
+
 -- | A TestTree that depends on a Pool of SqlBackends, for use with
 -- 'withResource'
-type DBTestTree = IO (Pool SqlBackend) -> TestTree
+type DBTestTree = IO TmpDB -> TestTree
 
 -- | A stand-in for undefined tests
 pending :: MonadIO m => m ()
@@ -55,8 +62,8 @@ ma `shouldBe` b = ma >>= (liftIO . (@?= b))
 -- A single database test. Takes place within a transaction that is rolled
 -- back at the end of the test. Thus, tests remain independent.
 dbTestCase :: TestName -> DBAssertion -> DBTestTree
-dbTestCase label stmt mpool = testCase label $ do
-    pool <- mpool
+dbTestCase label stmt tmpdb = testCase label $ do
+    pool <- tmpPool <$> tmpdb
     runNoLoggingT (runSqlPool (stmt >> transactionUndo) pool)
 
 -- | Group DBTestTrees. They share a common pool of DB connections.
@@ -72,15 +79,30 @@ withDB :: PostgresConf -> Migration -> DBTestTree -> TestTree
 withDB conf migrate = withResource mkTempDBPool cleanseDatabase
   where
     mkTempDBPool = runNoLoggingT $ do
-        pgExecute z "create database blablab"
-        p <- createPostgresqlPool str (pgPoolSize conf)
+        tmpname <- liftIO mkTempName
+        pgExecute z (createQuery tmpname)
+        p <- createPostgresqlPool (connect tmpname) (pgPoolSize conf)
         void $ runSqlPool (runMigrationSilent migrate) p
-        return p
+        return (TmpDB p tmpname)
     z = pgConnStr conf <> "&dbname=postgres"
-    str = pgConnStr conf <> "&dbname=blablab"
-    cleanseDatabase pool = do
-        destroyAllResources pool
-        void $ pgExecute z "drop database blablab"
-    pgExecute constr q = void . liftIO $ bracket (connectPostgreSQL constr)
+    connect name = pgConnStr conf <> "&dbname=" <> pack name
+    cleanseDatabase tmpDB = do
+        destroyAllResources (tmpPool tmpDB)
+        void $ pgExecute z (dropQuery (tmpName tmpDB))
+    pgExecute connstr q = void . liftIO $ bracket (connectPostgreSQL connstr)
                                                  close
                                                  (\c -> execute_ c q)
+    -- YELLOW ALERT: These names and queries are artisanally crafted to
+    -- avoid injection attacks and syntax errors.
+    mkTempName = ("tasty_" <>)
+               . take 12
+               . randomRs ('a', 'z')
+               <$> getStdGen
+    -- ...this is hilarious, though. There's no real way to do this.
+    -- Attempting to use query paramaters ("create database ?") causes the
+    -- db name to be wrapped in single-quote chars, which is a syntax
+    -- error.
+    createQuery db = "create database "
+                   <> read ("\"" <> db <> "\"")
+    dropQuery db = "drop database "
+                   <> read ("\"" <> db <> "\"")

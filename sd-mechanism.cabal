@@ -40,6 +40,7 @@ test-suite test
     main-is:          test.hs
     ghc-options:      -Wall -threaded -with-rtsopts=-N
     build-depends:    base >= 4 && < 5
+                    , bytestring >= 0.10.6.0
                     , tasty >= 0.10
                     , tasty-hunit
                     , sd-mechanism
@@ -50,3 +51,4 @@ test-suite test
                     , postgresql-simple >= 0.5.1.2
                     , persistent-postgresql >= 2.2.2
                     , resource-pool >= 0.2.3.2
+                    , random >= 1.1
