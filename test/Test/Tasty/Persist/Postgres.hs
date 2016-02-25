@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tools for running standalone tests that use Persist. The guiding
--- principle is test independence. The key [tbd] mechanisms are creating
--- temporary databases and rolling back all test-created changes between
--- each test.
-module Test.Tasty.Persist
+-- | Tools for running standalone tests that use Postgres via Persist. The
+-- guiding principle is test independence. The key [tbd] mechanisms are
+-- creating temporary databases and rolling back all test-created changes
+-- between each test.
+module Test.Tasty.Persist.Postgres
         ( -- * getting back to TestTree:s
           withDB
           -- * DBAssertion:s
@@ -23,7 +23,7 @@ import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (runNoLoggingT, NoLoggingT(..))
 import Data.Monoid ((<>))
 import Data.Pool (Pool, destroyAllResources)
-import Database.Persist.Postgresql (createPostgresqlPool)
+import Database.Persist.Postgresql (createPostgresqlPool, PostgresConf(..))
 import Database.Persist.Sql
         ( Migration
         , SqlBackend
@@ -68,18 +68,16 @@ dbTestGroup label dbtree mpool = testGroup label (map ($ mpool) dbtree)
 -- The DBTestTree is bracketed with the creation and destruction of a
 -- temporary database. Requires admin privileges. You're using a local db
 -- cluster, right?
-withDB :: Migration -> DBTestTree -> TestTree
-withDB migrate = withResource mkTempDBPool cleanseDatabase
+withDB :: PostgresConf -> Migration -> DBTestTree -> TestTree
+withDB conf migrate = withResource mkTempDBPool cleanseDatabase
   where
     mkTempDBPool = runNoLoggingT $ do
         pgExecute z "create database blablab"
-        p <- createPostgresqlPool str 10
+        p <- createPostgresqlPool str (pgPoolSize conf)
         void $ runSqlPool (runMigrationSilent migrate) p
         return p
-    z = "postgresql:///postgres?"
-        <> "host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
-    str = "postgresql:///blablab?"
-          <> "host=/home/b/src/Haskell/snowdrift/sd-mechanism/postgres/sockets"
+    z = pgConnStr conf <> "&dbname=postgres"
+    str = pgConnStr conf <> "&dbname=blablab"
     cleanseDatabase pool = do
         destroyAllResources pool
         void $ pgExecute z "drop database blablab"

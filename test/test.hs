@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+import Data.Monoid ((<>))
 import Test.Tasty
-import Test.Tasty.Persist
+import Test.Tasty.Persist.Postgres
 import Database.Persist
+import Database.Persist.Postgresql
 
 import SDMechanism
 import Persist
@@ -13,11 +15,15 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = withDB migrateMech $ dbTestGroup "input processor"
+tests = withDB conn migrateMech $ dbTestGroup "input processor"
     [ dbTestCase "nobody is ever overspent" pending
     , dbTestCase "during payout, projects are independent" pending
     , dbTestGroup "patron must support 3 months of pledging" threeMonths
     ]
+  where
+    conn = PostgresConf str 1
+    str = "postgresql:///ignored?"
+        <> "host=/home/b/src/Haskell/snowdrift/sd-mechanism/.postgres-work/sockets"
 
 threeMonths :: [DBTestTree]
 threeMonths =
