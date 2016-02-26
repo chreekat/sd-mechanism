@@ -90,8 +90,8 @@ withDB conf migrate = withResource mkTempDBPool cleanseDatabase
         destroyAllResources (tmpPool tmpDB)
         void $ pgExecute z (dropQuery (tmpName tmpDB))
     pgExecute connstr q = void . liftIO $ bracket (connectPostgreSQL connstr)
-                                                 close
-                                                 (\c -> execute_ c q)
+                                                  close
+                                                  (`execute_` q)
     -- YELLOW ALERT: These names and queries are artisanally crafted to
     -- avoid injection attacks and syntax errors.
     mkTempName = ("tasty_" <>)

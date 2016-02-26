@@ -1,7 +1,19 @@
--- For type Mech m a
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE FlexibleContexts #-}
-module SDMechanism where
+module Mechanism
+        ( -- * Manage pledges etc.
+          newPledge
+        , newPatron
+        , deletePledge
+          -- * Statistics
+        , patronPledges
+          -- * Integration
+        , migrateMech
+        , ToMechPatron(..)
+        , ToMechProject(..)
+          -- ** Errors, nooo
+        , MechError(..)
+        ) where
 
 import Control.Error
 import Control.Monad (void)

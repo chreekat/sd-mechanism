@@ -5,9 +5,8 @@ import Test.Tasty.Persist.Postgres
 import Database.Persist
 import Database.Persist.Postgresql
 
-import SDMechanism
+import Mechanism
 import Persist
-import Types
 
 import Harness
 
@@ -31,7 +30,7 @@ threeMonths =
         do insert_ (MechPatron 0 0)
            insert_ (MechProject 0 0)
            newPledge (HR 0) (HA 0)
-        `shouldBe` (Left InsufficientFunds)
+        `shouldBe` Left InsufficientFunds
     , dbTestCase "only patron (sufficient)" $
         do insert_ (MechPatron 3 0)
            insert_ (MechProject 0 0)
@@ -46,7 +45,7 @@ threeMonths =
            newPledge (HR 0) (HA 1)
         `shouldBe` Left InsufficientFunds
     , dbTestCase "2 patrons (sufficient)" $
-        do a <- insert (MechPatron 6 0)
+        do a <- insert (MechPatron 7 0)
            r <- insert (MechProject 0 0)
            insert_ (Pledge r a)
            insert_ (MechPatron 6 1)
@@ -60,7 +59,7 @@ threeMonths =
            newPledge (HR 0) (HA 4000)
         `shouldBe` Left InsufficientFunds
     , dbTestCase "many patrons (sufficient)" $
-        do as <- mapM (insert . MechPatron 100) [0..2000]
+        do as <- mapM (insert . MechPatron 100) [0..2001]
            r <- insert (MechProject 0 0)
            mapM_ (insert_ . Pledge r) as
            insert_ (MechPatron 7000 4000)

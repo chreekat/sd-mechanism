@@ -17,7 +17,7 @@ source-repository head
 
 library
     hs-source-dirs:   src
-    exposed-modules:  SDMechanism
+    exposed-modules:  Mechanism
                       Types
                       Persist
     default-language: Haskell2010
